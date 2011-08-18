@@ -1,0 +1,228 @@
+#!/bin/sh
+#####################################################################
+# @(#) Set all iptables
+#
+# Author: Tats Shibata
+# License: http://rewse.jp/license/2011.01.txt
+#
+# Copyright (c) 2011, Rewse Lab. All rights reserved.
+#####################################################################
+# {{{ Trap
+
+trap 'my_exit 1' 1 2 3 15
+
+# }}}
+# {{{ load_config
+load_config() {
+  if [ -f /etc/iptables-setall.conf ]; then
+    . /etc/iptables-setall.conf
+  else
+    echo "[ERROR] /etc/iptables-setall.conf is required" 1>&2
+    exit 1
+  fi
+
+  if [ "$LOCALNETS" == "" ]; then
+    echo '[ERROR] $LOCALNETS is required' 1>&2
+    exit 1
+  fi
+
+  if [ "$IP0" == "" ]; then
+    echo '[ERROR] $IP0 is required' 1>&2
+    exit 1
+  fi
+}
+# }}}
+# {{{ claer_chains
+clear_chains() {
+  iptables -P INPUT ACCEPT
+  iptables -P FORWARD ACCEPT
+  iptables -P OUTPUT ACCEPT
+  iptables -F
+  iptables -X
+}
+# }}}
+# {{{ block_chains
+block_chains() {
+  iptables -I INPUT -j DROP
+  iptables -I OUTPUT -j DROP
+  iptables -I FORWARD -j DROP
+}
+# }}}
+# {{{ unblock_chains
+unblock_chains() {
+  iptables -D INPUT -j DROP
+  iptables -D OUTPUT -j DROP
+  iptables -D FORWARD -j DROP
+}
+# }}}
+# {{{ init_chains
+init_chains() {
+  iptables -P INPUT DROP
+  iptables -P OUTPUT ACCEPT
+  iptables -P FORWARD DROP
+
+  iptables -N IP0_INPUT
+  if [ "$IP1" != "" ]; then iptables -N IP1_INPUT; fi
+
+  iptables -N FILTER
+  iptables -N KRFILTER
+
+  iptables -N DISGUISED
+  iptables -A DISGUISED -j LOG -m limit \
+    --log-level info --log-prefix "[DISGUISED]"
+  iptables -A DISGUISED -j DROP
+
+  iptables -N FRAGMENTED
+  iptables -A FRAGMENTED -j LOG -m limit \
+    --log-level info --log-prefix "[FRAGMENTED]"
+  iptables -A FRAGMENTED -j DROP
+
+  iptables -N FILTERED
+  iptables -A FILTERED -j LOG -m limit \
+    --log-level info --log-prefix "[FILTERED]"
+  iptables -A FILTERED -j DROP
+
+  iptables -N KRFILTERED
+  iptables -A KRFILTERED -j LOG -m limit \
+    --log-level info --log-prefix "[KRFILTERED]"
+  iptables -A KRFILTERED -j DROP
+
+  iptables -N TERMINATED
+  iptables -A TERMINATED -j LOG -m limit \
+    --log-level info --log-prefix "[TERMINATED]"
+  iptables -A TERMINATED -j DROP
+}
+# }}}
+# {{{ assign_chains
+assign_chains() {
+  iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+  iptables -A INPUT -i lo -j ACCEPT
+  iptables -A INPUT -p tcp -s $IP0 -j DISGUISED
+  if [ "$IP1" != "" ]; then
+    iptables -A INPUT -p tcp -s $IP1 -j DISGUISED
+  fi
+
+  for LOCALNET in $LOCALNETS; do
+    iptables -A INPUT -s $LOCALNET -j ACCEPT
+  done
+
+  iptables -A INPUT -s 127.0.0.0/8 -j DISGUISED
+  iptables -A INPUT -s 192.168.0.0/16 -j DISGUISED
+  iptables -A INPUT -s 172.16.0.0/12 -j DISGUISED
+  iptables -A INPUT -s 10.0.0.0/8 -j DISGUISED
+
+  iptables -A INPUT -f -j FRAGMENTED
+
+  iptables -A INPUT -d $IP0 -j IP0_INPUT
+  if [ "$IP1" != "" ]; then iptables -A INPUT -d $IP1 -j IP1_INPUT; fi
+
+  iptables -A INPUT -d ! 255.255.255.255 -j TERMINATED
+}
+# }}}
+# {{{ open_ports
+open_ports() {
+  INPUT=$1
+  NOFILTER_TCPS=$2
+  FILTER_TCPS=$3
+  USING_UDPS=$4
+
+  for PORT in $NOFILTER_TCPS; do
+    iptables -A $INPUT -p tcp --dport $PORT -j ACCEPT \
+      -m hashlimit --hashlimit 1/s --hashlimit-burst 100 \
+      --hashlimit-mode srcip,dstport --hashlimit-htable-expire 8640000 \
+      --hashlimit-name tcp_$PORT
+  done
+
+  for PORT in $FILTER_TCPS; do
+    iptables -A $INPUT -p tcp --dport $PORT -j FILTER
+  done
+
+  for PORT in $USING_UDPS; do
+    iptables -A $INPUT -p udp --sport $PORT -j ACCEPT \
+      -m hashlimit --hashlimit 1/s --hashlimit-burst 100 \
+      --hashlimit-mode srcip,dstport --hashlimit-htable-expire 8640000 \
+      --hashlimit-name udp_s$PORT
+    iptables -A $INPUT -p udp --dport $PORT -j ACCEPT \
+      -m hashlimit --hashlimit 1/s --hashlimit-burst 100 \
+      --hashlimit-mode srcip,dstport --hashlimit-htable-expire 8640000 \
+      --hashlimit-name udp_d$PORT
+  done
+
+  iptables -A $INPUT -j TERMINATED
+}
+# }}}
+# {{{ get_kr
+get_kr() {
+  curl -4o /tmp/KRCN.sh \
+    "http://www.hakusan.tsg.ne.jp/tjkawa/lib/krfilter/KRCN.sh.txt"
+
+  if [ $? != 0 ]; then
+    echo "[ERROR] Can't download KRFILTER" 1>&2
+    my_exit 1
+  fi
+}
+# }}}
+# {{{ create_kr
+create_kr() {
+  if [ -f /tmp/KRCN.sh ]; then
+    sh /tmp/KRCN.sh
+    rm -f /tmp/KRCN.sh
+  fi
+}
+#}}}
+# {{{ create_filter
+create_filter() {
+  for FILTERED_IP in $FILTERED_IPS; do
+    iptables -A FILTER -s $FILTERED_IP -j FILTERED
+  done
+
+  create_kr
+
+  iptables -A FILTER -j KRFILTER
+
+  iptables -A KRFILTER -j ACCEPT \
+    -m hashlimit --hashlimit 6/m --hashlimit-burst 10 \
+    --hashlimit-mode srcip,dstport --hashlimit-htable-expire 8640000 \
+    --hashlimit-name tcp_others
+}
+# }}}
+# {{{ my_exit
+my_exit() {
+  unblock_chains
+  exit $1
+}
+# }}}
+# {{{ Main
+
+case "$1" in
+  --clear | -c)
+    clear_chains
+    ;;
+  "")
+    load_config
+    get_kr
+    clear_chains
+    block_chains
+    init_chains
+    assign_chains
+    create_filter
+    open_ports IP0_INPUT "$IP0_NOFILTER_TCPS" "$IP0_FILTER_TCPS" \
+      "$IP0_USING_UDPS"
+    if [ "$IP1" != "" ]; then
+      open_ports IP1_INPUT "$IP1_NOFILTER_TCPS" "$IP1_FILTER_TCPS" \
+        "$IP1_USING_UDPS"
+    fi
+    unblock_chains
+    ;;
+  *)
+    echo "[USAGE] iptables-setall [--clear]" 1>&2
+    exit 1
+    ;;
+esac
+
+service iptables save
+
+iptables -L -Z -n -v
+
+# }}}
