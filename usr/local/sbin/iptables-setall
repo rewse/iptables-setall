@@ -65,7 +65,7 @@ init_chains() {
   if [ "$IP1" != "" ]; then iptables -N IP1_INPUT; fi
 
   iptables -N FILTER
-  iptables -N KRFILTER
+  iptables -N CKFILTER
 
   iptables -N DISGUISED
   iptables -A DISGUISED -j LOG -m limit \
@@ -82,10 +82,10 @@ init_chains() {
     --log-level info --log-prefix "[FILTERED]"
   iptables -A FILTERED -j DROP
 
-  iptables -N KRFILTERED
-  iptables -A KRFILTERED -j LOG -m limit \
-    --log-level info --log-prefix "[KRFILTERED]"
-  iptables -A KRFILTERED -j DROP
+  iptables -N CKFILTERED
+  iptables -A CKFILTERED -j LOG -m limit \
+    --log-level info --log-prefix "[CKFILTERED]"
+  iptables -A CKFILTERED -j DROP
 
   iptables -N TERMINATED
   iptables -A TERMINATED -j LOG -m limit \
@@ -152,23 +152,28 @@ open_ports() {
   iptables -A $INPUT -j TERMINATED
 }
 # }}}
-# {{{ get_kr
-get_kr() {
-  curl -4o /tmp/KRCN.sh \
-    "http://www.hakusan.tsg.ne.jp/tjkawa/lib/krfilter/KRCN.sh.txt"
+# {{{ get_ck
+get_ck() {
+  curl -4o /tmp/delegated-apnic-latest \
+    "ftp://ftp.apnic.net/pub/apnic/stats/apnic/delegated-apnic-latest"
 
   if [ $? != 0 ]; then
-    echo "[ERROR] Can't download KRFILTER" 1>&2
+    echo "[ERROR] Can't download CKFILTER" 1>&2
     my_exit 1
   fi
 }
 # }}}
-# {{{ create_kr
-create_kr() {
-  if [ -f /tmp/KRCN.sh ]; then
-    sh /tmp/KRCN.sh
-    rm -f /tmp/KRCN.sh
+# {{{ create_ck
+create_ck() {
+  if [ ! -f /tmp/delegated-apnic-latest ]; then
+    echo "[ERROR] delegated-apnic-latest is not found" 1>&2
   fi
+
+  countryfilter iptables KR,CN,KP < /tmp/delegated-apnic-latest > /tmp/ckfilter.sh
+  sed 's!/usr/sbin/iptables!/sbin/iptables!g' /tmp/ckfilter.sh > /tmp/ckfilter.sh.new
+  mv -f /tmp/ckfilter.sh.new /tmp/ckfilter.sh
+  sh /tmp/ckfilter.sh
+  rm -f /tmp/delegated-apnic-latest /tmp/ckfilter.sh
 }
 #}}}
 # {{{ create_filter
@@ -177,11 +182,11 @@ create_filter() {
     iptables -A FILTER -s $FILTERED_IP -j FILTERED
   done
 
-  create_kr
+  create_ck
 
-  iptables -A FILTER -j KRFILTER
+  iptables -A FILTER -j CKFILTER
 
-  iptables -A KRFILTER -j ACCEPT \
+  iptables -A CKFILTER -j ACCEPT \
     -m hashlimit --hashlimit 6/m --hashlimit-burst 10 \
     --hashlimit-mode srcip,dstport --hashlimit-htable-expire 8640000 \
     --hashlimit-name tcp_others
@@ -201,7 +206,7 @@ case "$1" in
     ;;
   "")
     load_config
-    get_kr
+    get_ck
     clear_chains
     block_chains
     init_chains
