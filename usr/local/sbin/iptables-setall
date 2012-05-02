@@ -181,7 +181,7 @@ create_ck() {
     echo "[ERROR] delegated-apnic-latest is not found" 1>&2
   fi
 
-  countryfilter iptables KR,CN,KP < /tmp/delegated-apnic-latest > /tmp/ckfilter.sh
+  countryfilter iptables $FILTERED_COUNTRIES < /tmp/delegated-apnic-latest > /tmp/ckfilter.sh
   sed 's!/usr/sbin/iptables!/sbin/iptables!g' /tmp/ckfilter.sh > /tmp/ckfilter.sh.new
   mv -f /tmp/ckfilter.sh.new /tmp/ckfilter.sh
   sh /tmp/ckfilter.sh
