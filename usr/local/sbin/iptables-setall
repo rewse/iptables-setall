@@ -87,6 +87,11 @@ init_chains() {
     --log-level info --log-prefix "[CKFILTERED]"
   iptables -A CKFILTERED -j DROP
 
+  iptables -N LIMITED
+  iptables -A LIMITED -j LOG -m limit \
+    --log-level info --log-prefix "[LIMITED]"
+  iptables -A LIMITED -j DROP
+
   iptables -N TERMINATED
   iptables -A TERMINATED -j LOG -m limit \
     --log-level info --log-prefix "[TERMINATED]"
@@ -129,9 +134,11 @@ open_ports() {
 
   for PORT in $NOFILTER_TCPS; do
     iptables -A $INPUT -p tcp --dport $PORT -j ACCEPT \
-      -m hashlimit --hashlimit 1/s --hashlimit-burst 100 \
-      --hashlimit-mode srcip,dstport --hashlimit-htable-expire 8640000 \
+      -m hashlimit --hashlimit 1/s --hashlimit-burst 60 \
+      --hashlimit-mode srcip,dstport --hashlimit-htable-expire 60000 \
       --hashlimit-name tcp_$PORT
+
+    iptables -A $INPUT -p tcp --dport $PORT -j LIMITED
   done
 
   for PORT in $FILTER_TCPS; do
@@ -140,13 +147,18 @@ open_ports() {
 
   for PORT in $USING_UDPS; do
     iptables -A $INPUT -p udp --sport $PORT -j ACCEPT \
-      -m hashlimit --hashlimit 1/s --hashlimit-burst 100 \
-      --hashlimit-mode srcip,dstport --hashlimit-htable-expire 8640000 \
+      -m hashlimit --hashlimit 1/s --hashlimit-burst 60 \
+      --hashlimit-mode srcip,dstport --hashlimit-htable-expire 60000 \
       --hashlimit-name udp_s$PORT
+
+    iptables -A $INPUT -p udp --sport $PORT -j LIMITED
+
     iptables -A $INPUT -p udp --dport $PORT -j ACCEPT \
-      -m hashlimit --hashlimit 1/s --hashlimit-burst 100 \
-      --hashlimit-mode srcip,dstport --hashlimit-htable-expire 8640000 \
+      -m hashlimit --hashlimit 1/s --hashlimit-burst 60 \
+      --hashlimit-mode srcip,dstport --hashlimit-htable-expire 60000 \
       --hashlimit-name udp_d$PORT
+
+    iptables -A $INPUT -p udp --dport $PORT -j LIMITED
   done
 
   iptables -A $INPUT -j TERMINATED
@@ -187,9 +199,11 @@ create_filter() {
   iptables -A FILTER -j CKFILTER
 
   iptables -A CKFILTER -j ACCEPT \
-    -m hashlimit --hashlimit 6/m --hashlimit-burst 10 \
-    --hashlimit-mode srcip,dstport --hashlimit-htable-expire 8640000 \
+    -m hashlimit --hashlimit 12/m --hashlimit-burst 12 \
+    --hashlimit-mode srcip,dstport --hashlimit-htable-expire 60000 \
     --hashlimit-name tcp_others
+
+  iptables -A CKFILTER -j LIMITED
 }
 # }}}
 # {{{ my_exit
