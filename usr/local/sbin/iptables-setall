@@ -122,7 +122,13 @@ assign_chains() {
   iptables -A INPUT -d $IP0 -j IP0_INPUT
   if [ "$IP1" != "" ]; then iptables -A INPUT -d $IP1 -j IP1_INPUT; fi
 
-  iptables -A INPUT ! -d 255.255.255.255 -j TERMINATED
+  # Multicast DNS
+  iptables -A INPUT -p udp -d 224.0.0.251 --dport 5353 -j ACCEPT
+
+  # DHCP
+  iptables -A INPUT -p udp -d 255.255.255.255 -j ACCEPT
+
+  iptables -A INPUT -j TERMINATED
 }
 # }}}
 # {{{ open_ports
