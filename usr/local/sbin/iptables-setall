@@ -69,32 +69,32 @@ init_chains() {
 
   iptables -N DISGUISED
   iptables -A DISGUISED -j LOG -m limit \
-    --log-level info --log-prefix "[DISGUISED]"
+    --log-level notice --log-prefix "iptables: disguised: "
   iptables -A DISGUISED -j DROP
 
   iptables -N FRAGMENTED
   iptables -A FRAGMENTED -j LOG -m limit \
-    --log-level info --log-prefix "[FRAGMENTED]"
+    --log-level notice --log-prefix "iptables: fragmented: "
   iptables -A FRAGMENTED -j DROP
 
   iptables -N FILTERED
   iptables -A FILTERED -j LOG -m limit \
-    --log-level info --log-prefix "[FILTERED]"
+    --log-level notice --log-prefix "iptables: filtered: "
   iptables -A FILTERED -j DROP
 
   iptables -N CKFILTERED
   iptables -A CKFILTERED -j LOG -m limit \
-    --log-level info --log-prefix "[CKFILTERED]"
+    --log-level notice --log-prefix "iptables: ckfiltered: "
   iptables -A CKFILTERED -j DROP
 
   iptables -N LIMITED
   iptables -A LIMITED -j LOG -m limit \
-    --log-level info --log-prefix "[LIMITED]"
+    --log-level notice --log-prefix "iptables: ckfiltered: "
   iptables -A LIMITED -j DROP
 
   iptables -N TERMINATED
   iptables -A TERMINATED -j LOG -m limit \
-    --log-level info --log-prefix "[TERMINATED]"
+    --log-level notice --log-prefix "iptables: terminated: "
   iptables -A TERMINATED -j DROP
 }
 # }}}
