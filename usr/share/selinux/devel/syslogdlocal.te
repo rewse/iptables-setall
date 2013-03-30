@@ -1,0 +1,15 @@
+
+module syslogdlocal 1.0.5;
+
+require {
+  type bin_t;
+  type shell_exec_t;
+  type syslogd_t;
+  class file { execute execute_no_trans getattr ioctl open read };
+  class lnk_file read;
+}
+
+#============= syslogd_t ==============
+allow syslogd_t bin_t:file { execute execute_no_trans getattr ioctl open read };
+allow syslogd_t bin_t:lnk_file read;
+allow syslogd_t shell_exec_t:file { execute open read };

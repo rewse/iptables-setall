@@ -1,0 +1,3 @@
+#!/bin/sh
+
+echo $1 | awk '{print $6}' | sed 's/SRC=//' | xargs host -W 3 | logger -p info -t iptables-host[$$]
